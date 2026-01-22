@@ -1,0 +1,164 @@
+---
+title: "Simulation of an integrated step selection analysis (iSSA)"
+author:
+  - Alessandra Vidal Meza
+  - Max Czapanskiy
+date: today
+format:
+  html: 
+    output-file: "index.html"
+---
+
+## Get started
+
+Let's load all necessary packages and set our seed for reproducibility.
+
+```{r load libraries}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(terra)
+```
+
+```{r set seed}
+set.seed(268)
+```
+
+Next, create a template raster.
+
+```{r template raster}
+rast <- rast(ext(c(-50, 50, -50, 50)), nrows = 250, ncols = 250, crs = "EPSG:6339")
+```
+
+And define `normalize_raster_discrete`. We use this function to normalize rasters to kernels.
+
+```{r function normalize}
+normalize_raster_discrete <- function(x){
+  
+  total_sum <- global(x, "sum", na.rm = TRUE)$sum
+  rst_pdf <- x/total_sum # Normalize to kernel
+  
+  return(rst_pdf)
+  
+}
+```
+
+## Generate a movement track
+
+Let's create a track of 11 locations. These are our used locations.
+
+```{r make track}
+track <- tibble(x = sort(sample(seq(0, 50, 1), size = 10)), 
+                y = sort(sample(seq(0, 50, 1), size = 10))) |> 
+  mutate(t = 1:10) |>
+  add_row(x = 0, y = 0, t = 0) |> # Add origin at t = 0
+  arrange(t)
+```
+
+Movement is described through several properties, including step length and turning angle. We create a set of available location for each used location based on these two properties.
+
+```{r initialize}
+available_steps_ls <- list() # Initialize empty list
+```
+
+```{r function generate steps}
+generate_available_steps <- function(track, n){
+    
+  for (i in 1:(nrow(track)-2)){ # Skip last two rows
+    
+    t_0 <- track$t[[i]]
+    x_0 <- track$x[[i]]
+    y_0 <- track$y[[i]]
+    
+    t_1 <- track$t[[i+1]]
+    x_1 <- track$x[[i+1]]
+    y_1 <- track$y[[i+1]]
+    
+    x_2 <- track$x[[i+2]]
+    y_2 <- track$y[[i+2]]
+    
+    # Find difference for segment 1
+    dx_1 <- x_1 - x_0 
+    dy_1 <- y_1 - y_0
+  
+    # Find difference for segment 2
+    dx_2 <- x_2 - x_1
+    dy_2 <- y_2 - y_1
+    
+    # Calculate step length
+    step_shape <- sqrt((dx_1)^2 + (dy_1)^2) # Find distance
+    step_rate <- t_1 - t_0 # Find time lag
+    
+    # Calculate turning angle
+    bearing_1 <- atan2(dy_1, dx_1) # Find bearing for segment 1
+    bearing_2 <- atan2(dy_2, dx_2)  # Find bearing for segment 2
+    db <- bearing_2 - bearing_1 # Find difference in bearings (turning angle)
+    db <- (db + pi) %% (2 * pi) - pi # Normalize to pi
+    db <- db * 180 / pi # Convert to degrees
+    
+    # Generate n available steps for x_0 and y_0
+    available_steps <- tibble(
+      i = 1:n,
+      # Use gamma distribution to randomly sample
+      step_length = rgamma(n, shape = step_shape, rate = step_rate),
+      # Use von Mises Distribution to randomly sample
+      turning_angle = CircStats::rvm(n, mean = 0, k = db), 
+      x = x_0 + step_length * cos(turning_angle), 
+      y = y_0 + step_length * sin(turning_angle)
+      )
+    
+    available_steps_ls[[i]] <- available_steps
+  }
+  
+  return(available_steps_ls)
+  
+}
+```
+
+```{r generate steps}
+available_steps_ls <- generate_available_steps(track, n = 150)
+head(available_steps_ls[[1]])
+```
+
+## Create an environmental kernel
+
+Let's define `create_env_kernel`. We use this function to create kernels for our environmental features. 
+
+```{r function env kernel}
+create_env_kernel <- function(n, mean, sd, template = rast){
+  
+  env_rast <- template
+  
+  # Generate values and assign to raster cells
+  env_values <- sample(x = rnorm(n, mean = mean, sd), size = ncell(env_rast), replace = TRUE)
+  values(env_rast) <- env_values
+  
+  # Add patchiness by averaging neighboring cells for each cell
+  env_rast <- focal(env_rast, w = 3, fun = "mean", na.rm = TRUE)
+  
+  env_kernel <- normalize_raster_discrete(env_rast) # Normalize to kernel
+  return(env_kernel)
+  
+}
+```
+
+```{r env kernel 1}
+env1_kernel <- create_env_kernel(n = 1e5, mean = 500, sd = 200)
+```
+
+```{r env kernel 2}
+env2_kernel <- create_env_kernel(n = 1e5, mean = 900, sd = 300)
+```
+
+We set our selection coefficients, $\omega$, for each kernel.
+
+```{r env omega values}
+omega_1 <- 0.95
+omega_2 <- 0.65
+```
+
+## Create a movement kernel
+
+Next, let's create a movement kernel to describe the probability density of occurrence in the absence of habitat selection. 
+
+## Fit a conditional logistic regression

@@ -1,0 +1,10 @@
+project:
+  output-dir: docs
+  
+format:
+  html:
+    page-layout: article
+    toc: true
+    theme:
+      - styles.scss
+    mainfont: Open Sans
