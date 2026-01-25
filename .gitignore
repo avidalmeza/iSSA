@@ -1,8 +1,45 @@
-.Rproj.user
+# History files
 .Rhistory
+.Rapp.history
+
+# Session Data files
 .RData
+.RDataTmp
+
+# User-specific files
 .Ruserdata
 
-/.quarto/
+# RStudio files
+.Rproj.user/
+*.Rproj
 
-**/.DS_Store
+# OAuth2 token and sensitive files
+.httr-oauth
+.secrets
+
+# R Environment files
+.Renviron
+
+# RStudio Connect folder
+rsconnect/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# Jupyter Notebook files
+.ipynb_checkpoints
+
+# Environment files
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Quarto files
+/.quarto/
