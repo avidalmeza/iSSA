@@ -13,30 +13,36 @@ format:
 
 Let's load all necessary packages and set our seed for reproducibility.
 
+```{r clear environment}
+#| include: false
+rm(list = ls())
+```
+
 ```{r load libraries}
 #| message: false
 #| warning: false
 library(tidyverse)
 library(terra)
+library(survival)
 ```
 
 ```{r set seed}
 set.seed(268)
 ```
 
-Next, create a template raster.
+Next, we create a template raster.
 
-```{r template raster}
+```{r create template rast}
 rast <- rast(ext(c(-50, 50, -50, 50)), nrows = 250, ncols = 250, crs = "EPSG:6339")
 ```
 
-And define `normalize_raster_discrete`. We use this function to normalize rasters to kernels.
+We will use the function `normalize_raster_discrete` to normalize our rasters to kernels.
 
-```{r function normalize}
+```{r define normalize fun}
 normalize_raster_discrete <- function(x){
   
   total_sum <- global(x, "sum", na.rm = TRUE)$sum
-  rst_pdf <- x/total_sum # Normalize to kernel
+  rst_pdf <- x/total_sum  # Normalize to kernel
   
   return(rst_pdf)
   
@@ -45,86 +51,123 @@ normalize_raster_discrete <- function(x){
 
 ## Generate a movement track
 
-Let's create a track of 11 locations. These are our used locations.
+Let's create a track of 11 locations. We refer to these as our used locations.
 
-```{r make track}
-track <- tibble(x = sort(sample(seq(0, 50, 1), size = 10)), 
-                y = sort(sample(seq(0, 50, 1), size = 10))) |> 
-  mutate(t = 1:10) |>
-  add_row(x = 0, y = 0, t = 0) |> # Add origin at t = 0
-  arrange(t)
+```{r create used locations}
+used_locs_df <- tibble(id = 1:10,
+                       x = sort(sample(1:50, size = 10)),
+                       y = sort(sample(1:50, size = 10)),
+                       t = 1:10) |>
+  add_row(id = 0, x = 0, y = 0, t = 0) |>   # Add origin at t = 0
+  mutate(used = as.numeric(1)) |> 
+  add_column(step_shape = NA,
+             step_rate = NA,
+             step_length = NA,
+             turn_angle = NA) |>
+  arrange(t) |> 
+  as.data.frame()
 ```
 
-Movement is described through several properties, including step length and turning angle. We create a set of available location for each used location based on these two properties.
+Movement is described through several properties, including step length and turning angle. The step length is the distance covered between consecutive steps (or a segment) given regular sampling, while the turning angle is the relative angle between consecutive segments.
 
-```{r initialize}
-available_steps_ls <- list() # Initialize empty list
+Next, let's calculate the step length and turning angle for our used locations.
+
+```{r calculate step length}
+for (i in 1:(nrow(used_locs_df)-1)){   # Skip last row
+    
+    dx_1 <- used_locs_df$x[[i+1]] - used_locs_df$x[[i]] 
+    dy_1 <- used_locs_df$y[[i+1]] - used_locs_df$y[[i]]
+    
+    step_shape <- sqrt((dx_1)^2 + (dy_1)^2)   # Find distance
+    step_rate <- used_locs_df$t[[i+1]] - used_locs_df$t[[i]]  # Find time lag
+    step_length <- step_shape/step_rate   # Find step length
+      
+    used_locs_df$step_shape[[i]] <- step_shape
+    used_locs_df$step_rate[[i]] <- step_rate
+    used_locs_df$step_length[[i]] <- step_length
+
+}
 ```
 
-```{r function generate steps}
-generate_available_steps <- function(track, n){
+```{r calculate turn angle}
+for (i in 1:(nrow(used_locs_df)-2)){   # Skip last two rows
     
-  for (i in 1:(nrow(track)-2)){ # Skip last two rows
-    
-    t_0 <- track$t[[i]]
-    x_0 <- track$x[[i]]
-    y_0 <- track$y[[i]]
-    
-    t_1 <- track$t[[i+1]]
-    x_1 <- track$x[[i+1]]
-    y_1 <- track$y[[i+1]]
-    
-    x_2 <- track$x[[i+2]]
-    y_2 <- track$y[[i+2]]
-    
-    # Find difference for segment 1
-    dx_1 <- x_1 - x_0 
-    dy_1 <- y_1 - y_0
+    dx_1 <- used_locs_df$x[[i+1]] - used_locs_df$x[[i]] 
+    dy_1 <- used_locs_df$y[[i+1]] - used_locs_df$y[[i]]
   
-    # Find difference for segment 2
-    dx_2 <- x_2 - x_1
-    dy_2 <- y_2 - y_1
+    dx_2 <- used_locs_df$x[[i+2]] - used_locs_df$x[[i+1]]
+    dy_2 <- used_locs_df$y[[i+2]] - used_locs_df$y[[i+1]]
     
-    # Calculate step length
-    step_shape <- sqrt((dx_1)^2 + (dy_1)^2) # Find distance
-    step_rate <- t_1 - t_0 # Find time lag
+    bearing_1 <- atan2(dy_1, dx_1)  # Find bearing for segment 1
+    bearing_2 <- atan2(dy_2, dx_2)    # Find bearing for segment 2
+    turn_angle <- bearing_2 - bearing_1   # Find difference in bearings (turning angle)
+    turn_angle <- (turn_angle + pi) %% (2 * pi) - pi  # Normalize to pi
+    turn_angle <- turn_angle * 180 / pi   # Convert to degrees
     
-    # Calculate turning angle
-    bearing_1 <- atan2(dy_1, dx_1) # Find bearing for segment 1
-    bearing_2 <- atan2(dy_2, dx_2)  # Find bearing for segment 2
-    db <- bearing_2 - bearing_1 # Find difference in bearings (turning angle)
-    db <- (db + pi) %% (2 * pi) - pi # Normalize to pi
-    db <- db * 180 / pi # Convert to degrees
+    used_locs_df$turn_angle[[i]] <- turn_angle
+
+}
+```
+
+## Create movement kernel
+
+A movement kernel describes the probability of an animal moving from its current location to another in the absence of resource selection. We estimate this kernel from the used vs. available locations. 
+
+Let's create a set of available location for time $t$ using step length and turning angle at time $t$. 
+
+```{r initialize ls}
+available_locs_ls <- list()  # Initialize empty list
+```
+
+```{r define generate available locations fun}
+generate_available_locs <- function(df, n){
+    
+  for (i in 1:(nrow(df)-2)){   # Skip last two rows
+    
+    df_i <- df[i, ]
     
     # Generate n available steps for x_0 and y_0
-    available_steps <- tibble(
-      i = 1:n,
+    available_locs <- tibble(
+      id = df_i$id,
+      used = as.numeric(0),
       # Use gamma distribution to randomly sample
-      step_length = rgamma(n, shape = step_shape, rate = step_rate),
+      step_length = rgamma(n, shape = df_i$step_shape, rate = df_i$step_rate),
       # Use von Mises Distribution to randomly sample
-      turning_angle = CircStats::rvm(n, mean = 0, k = db), 
-      x = x_0 + step_length * cos(turning_angle), 
-      y = y_0 + step_length * sin(turning_angle)
+      turn_angle = CircStats::rvm(n, mean = 0, k = df_i$turn_angle), 
+      x = df_i$x + step_length * cos(turn_angle), 
+      y = df_i$y + step_length * sin(turn_angle),
+      t = df_i$t,
       )
     
-    available_steps_ls[[i]] <- available_steps
+    available_locs_ls[[i]] <- available_locs
+    
   }
   
-  return(available_steps_ls)
+  available_locs_df <- bind_rows(available_locs_ls)  # Unlist into data frame
+  return(available_locs_df)
   
 }
 ```
 
-```{r generate steps}
-available_steps_ls <- generate_available_steps(track, n = 150)
-head(available_steps_ls[[1]])
+```{r generate available locations}
+available_locs_df <- generate_available_locs(df = used_locs_df, n = 150)
 ```
 
-## Create an environmental kernel
+And bind the data frames for the used (`used_locs_df`) and available (`available_locs_df`) locations. This data structure will make our regression analysis easier. 
 
-Let's define `create_env_kernel`. We use this function to create kernels for our environmental features. 
+```{r bind available locations}
+all_locs_df <- used_locs_df |> 
+  bind_rows(available_locs_df) |> 
+  arrange(t)
+```
 
-```{r function env kernel}
+## Create resource kernels
+
+Resource selection refers to the "desirability" of an available spatial unit, given its resource value. This resource is typically described as an environmental feature, but it can be any type of feature of multidimensional space. 
+
+We use the function `create_env_kernel` to represent our environmental features. 
+
+```{r define env kernel fun}
 create_env_kernel <- function(n, mean, sd, template = rast){
   
   env_rast <- template
@@ -136,29 +179,64 @@ create_env_kernel <- function(n, mean, sd, template = rast){
   # Add patchiness by averaging neighboring cells for each cell
   env_rast <- focal(env_rast, w = 3, fun = "mean", na.rm = TRUE)
   
-  env_kernel <- normalize_raster_discrete(env_rast) # Normalize to kernel
+  env_kernel <- normalize_raster_discrete(env_rast)   # Normalize to kernel
   return(env_kernel)
   
 }
 ```
 
-```{r env kernel 1}
+Let's create two environmental kernels.
+
+```{r create env kernel 1}
 env1_kernel <- create_env_kernel(n = 1e5, mean = 500, sd = 200)
 ```
 
-```{r env kernel 2}
-env2_kernel <- create_env_kernel(n = 1e5, mean = 900, sd = 300)
+```{r create env kernel 2}
+env2_kernel <- create_env_kernel(n = 1e5, mean = 900, sd = 250)
 ```
 
-We set our selection coefficients, $\omega$, for each kernel.
-
-```{r env omega values}
-omega_1 <- 0.95
-omega_2 <- 0.65
+```{r plot env kernels}
+#| echo: false
+par(mfrow = c(1,2))
+plot(env1_kernel, main = "Kernel 1")
+plot(env2_kernel, main = "Kernel 2")
 ```
 
-## Create a movement kernel
+For each used and available location, we need to extract the value in each kernel.
 
-Next, let's create a movement kernel to describe the probability density of occurrence in the absence of habitat selection. 
+```{r define annotate locations fun}
+annotate_locations <- function(locs_df, layer, col_name){
+  
+  locs_vect <- vect(locs_df, geom = c("x", "y"), crs = "EPSG:6339")
+  
+  if (crs(locs_vect) != crs(layer)){
+    locs_vect <- project(locs_vect, crs(layer))
+  }
+  
+  layer_pts <- extract(layer, locs_vect, ID = FALSE) |> 
+    as_tibble() |>
+    rename({{col_name}} := focal_mean)
+      
+  locs_df <- bind_cols(locs_df, layer_pts)
+  return(locs_df)
+  
+}
+```
+
+```{r annotate locations}
+all_locs_df <- annotate_locations(all_locs_df, env1_kernel, "env1")
+all_locs_df <- annotate_locations(all_locs_df, env2_kernel, "env2")
+```
 
 ## Fit a conditional logistic regression
+
+```{r clogit}
+iSSA <- clogit(used ~ step_length + turn_angle + env1 + env2 + strata(id), data = all_locs_df)
+summary(iSSA)
+```
+
+```{r}
+iSSA_2 <- clogit(used ~ step_length + step_length*env1 + turn_angle + env1 + env2 + strata(id), data = all_locs_df)
+summary(iSSA_2)
+```
+

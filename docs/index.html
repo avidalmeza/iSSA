@@ -8,7 +8,7 @@
 
 <meta name="author" content="Alessandra Vidal Meza">
 <meta name="author" content="Max Czapanskiy">
-<meta name="dcterms.date" content="2026-01-22">
+<meta name="dcterms.date" content="2026-01-25">
 
 <title>Simulation of an integrated step selection analysis (iSSA)</title>
 <style>
@@ -116,8 +116,8 @@ window.Quarto = {
   <ul>
   <li><a href="#get-started" id="toc-get-started" class="nav-link active" data-scroll-target="#get-started">Get started</a></li>
   <li><a href="#generate-a-movement-track" id="toc-generate-a-movement-track" class="nav-link" data-scroll-target="#generate-a-movement-track">Generate a movement track</a></li>
-  <li><a href="#create-an-environmental-kernel" id="toc-create-an-environmental-kernel" class="nav-link" data-scroll-target="#create-an-environmental-kernel">Create an environmental kernel</a></li>
-  <li><a href="#create-a-movement-kernel" id="toc-create-a-movement-kernel" class="nav-link" data-scroll-target="#create-a-movement-kernel">Create a movement kernel</a></li>
+  <li><a href="#create-movement-kernel" id="toc-create-movement-kernel" class="nav-link" data-scroll-target="#create-movement-kernel">Create movement kernel</a></li>
+  <li><a href="#create-resource-kernels" id="toc-create-resource-kernels" class="nav-link" data-scroll-target="#create-resource-kernels">Create resource kernels</a></li>
   <li><a href="#fit-a-conditional-logistic-regression" id="toc-fit-a-conditional-logistic-regression" class="nav-link" data-scroll-target="#fit-a-conditional-logistic-regression">Fit a conditional logistic regression</a></li>
   </ul>
 </nav>
@@ -144,7 +144,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">January 22, 2026</p>
+      <p class="date">January 25, 2026</p>
     </div>
   </div>
   
@@ -161,21 +161,22 @@ window.Quarto = {
 <p>Let’s load all necessary packages and set our seed for reproducibility.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(terra)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(terra)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(survival)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">268</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>Next, create a template raster.</p>
+<p>Next, we create a template raster.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>rast <span class="ot">&lt;-</span> <span class="fu">rast</span>(<span class="fu">ext</span>(<span class="fu">c</span>(<span class="sc">-</span><span class="dv">50</span>, <span class="dv">50</span>, <span class="sc">-</span><span class="dv">50</span>, <span class="dv">50</span>)), <span class="at">nrows =</span> <span class="dv">250</span>, <span class="at">ncols =</span> <span class="dv">250</span>, <span class="at">crs =</span> <span class="st">"EPSG:6339"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>And define <code>normalize_raster_discrete</code>. We use this function to normalize rasters to kernels.</p>
+<p>We will use the function <code>normalize_raster_discrete</code> to normalize our rasters to kernels.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>normalize_raster_discrete <span class="ot">&lt;-</span> <span class="cf">function</span>(x){</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  total_sum <span class="ot">&lt;-</span> <span class="fu">global</span>(x, <span class="st">"sum"</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)<span class="sc">$</span>sum</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  rst_pdf <span class="ot">&lt;-</span> x<span class="sc">/</span>total_sum <span class="co"># Normalize to kernel</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  rst_pdf <span class="ot">&lt;-</span> x<span class="sc">/</span>total_sum  <span class="co"># Normalize to kernel</span></span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(rst_pdf)</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  </span>
@@ -184,125 +185,233 @@ window.Quarto = {
 </section>
 <section id="generate-a-movement-track" class="level2">
 <h2 class="anchored" data-anchor-id="generate-a-movement-track">Generate a movement track</h2>
-<p>Let’s create a track of 11 locations. These are our used locations.</p>
+<p>Let’s create a track of 11 locations. We refer to these as our used locations.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>track <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">x =</span> <span class="fu">sort</span>(<span class="fu">sample</span>(<span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">50</span>, <span class="dv">1</span>), <span class="at">size =</span> <span class="dv">10</span>)), </span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>                <span class="at">y =</span> <span class="fu">sort</span>(<span class="fu">sample</span>(<span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">50</span>, <span class="dv">1</span>), <span class="at">size =</span> <span class="dv">10</span>))) <span class="sc">|&gt;</span> </span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">t =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_row</span>(<span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> <span class="dv">0</span>, <span class="at">t =</span> <span class="dv">0</span>) <span class="sc">|&gt;</span> <span class="co"># Add origin at t = 0</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(t)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>used_locs_df <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">id =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>,</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>                       <span class="at">x =</span> <span class="fu">sort</span>(<span class="fu">sample</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">50</span>, <span class="at">size =</span> <span class="dv">10</span>)),</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>                       <span class="at">y =</span> <span class="fu">sort</span>(<span class="fu">sample</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">50</span>, <span class="at">size =</span> <span class="dv">10</span>)),</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>                       <span class="at">t =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_row</span>(<span class="at">id =</span> <span class="dv">0</span>, <span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> <span class="dv">0</span>, <span class="at">t =</span> <span class="dv">0</span>) <span class="sc">|&gt;</span>   <span class="co"># Add origin at t = 0</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">used =</span> <span class="fu">as.numeric</span>(<span class="dv">1</span>)) <span class="sc">|&gt;</span> </span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_column</span>(<span class="at">step_shape =</span> <span class="cn">NA</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>             <span class="at">step_rate =</span> <span class="cn">NA</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">step_length =</span> <span class="cn">NA</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">turn_angle =</span> <span class="cn">NA</span>) <span class="sc">|&gt;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(t) <span class="sc">|&gt;</span> </span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>Movement is described through several properties, including step length and turning angle. We create a set of available location for each used location based on these two properties.</p>
+<p>Movement is described through several properties, including step length and turning angle. The step length is the distance covered between consecutive steps (or a segment) given regular sampling, while the turning angle is the relative angle between consecutive segments.</p>
+<p>Next, let’s calculate the step length and turning angle for our used locations.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>available_steps_ls <span class="ot">&lt;-</span> <span class="fu">list</span>() <span class="co"># Initialize empty list</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>(<span class="fu">nrow</span>(used_locs_df)<span class="sc">-</span><span class="dv">1</span>)){   <span class="co"># Skip last row</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    dx_1 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">1</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>x[[i]] </span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    dy_1 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">1</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>y[[i]]</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    step_shape <span class="ot">&lt;-</span> <span class="fu">sqrt</span>((dx_1)<span class="sc">^</span><span class="dv">2</span> <span class="sc">+</span> (dy_1)<span class="sc">^</span><span class="dv">2</span>)   <span class="co"># Find distance</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    step_rate <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>t[[i<span class="sc">+</span><span class="dv">1</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>t[[i]]  <span class="co"># Find time lag</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    step_length <span class="ot">&lt;-</span> step_shape<span class="sc">/</span>step_rate   <span class="co"># Find step length</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    used_locs_df<span class="sc">$</span>step_shape[[i]] <span class="ot">&lt;-</span> step_shape</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    used_locs_df<span class="sc">$</span>step_rate[[i]] <span class="ot">&lt;-</span> step_rate</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    used_locs_df<span class="sc">$</span>step_length[[i]] <span class="ot">&lt;-</span> step_length</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>generate_available_steps <span class="ot">&lt;-</span> <span class="cf">function</span>(track, n){</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>(<span class="fu">nrow</span>(used_locs_df)<span class="sc">-</span><span class="dv">2</span>)){   <span class="co"># Skip last two rows</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>(<span class="fu">nrow</span>(track)<span class="sc">-</span><span class="dv">2</span>)){ <span class="co"># Skip last two rows</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    t_0 <span class="ot">&lt;-</span> track<span class="sc">$</span>t[[i]]</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    x_0 <span class="ot">&lt;-</span> track<span class="sc">$</span>x[[i]]</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    y_0 <span class="ot">&lt;-</span> track<span class="sc">$</span>y[[i]]</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    dx_1 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">1</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>x[[i]] </span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    dy_1 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">1</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>y[[i]]</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    dx_2 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">2</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">1</span>]]</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    dy_2 <span class="ot">&lt;-</span> used_locs_df<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">2</span>]] <span class="sc">-</span> used_locs_df<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">1</span>]]</span>
 <span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    t_1 <span class="ot">&lt;-</span> track<span class="sc">$</span>t[[i<span class="sc">+</span><span class="dv">1</span>]]</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    x_1 <span class="ot">&lt;-</span> track<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">1</span>]]</span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    y_1 <span class="ot">&lt;-</span> track<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">1</span>]]</span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    x_2 <span class="ot">&lt;-</span> track<span class="sc">$</span>x[[i<span class="sc">+</span><span class="dv">2</span>]]</span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    y_2 <span class="ot">&lt;-</span> track<span class="sc">$</span>y[[i<span class="sc">+</span><span class="dv">2</span>]]</span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Find difference for segment 1</span></span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    dx_1 <span class="ot">&lt;-</span> x_1 <span class="sc">-</span> x_0 </span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    dy_1 <span class="ot">&lt;-</span> y_1 <span class="sc">-</span> y_0</span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Find difference for segment 2</span></span>
-<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>    dx_2 <span class="ot">&lt;-</span> x_2 <span class="sc">-</span> x_1</span>
-<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>    dy_2 <span class="ot">&lt;-</span> y_2 <span class="sc">-</span> y_1</span>
-<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Calculate step length</span></span>
-<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>    step_shape <span class="ot">&lt;-</span> <span class="fu">sqrt</span>((dx_1)<span class="sc">^</span><span class="dv">2</span> <span class="sc">+</span> (dy_1)<span class="sc">^</span><span class="dv">2</span>) <span class="co"># Find distance</span></span>
-<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>    step_rate <span class="ot">&lt;-</span> t_1 <span class="sc">-</span> t_0 <span class="co"># Find time lag</span></span>
-<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Calculate turning angle</span></span>
-<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>    bearing_1 <span class="ot">&lt;-</span> <span class="fu">atan2</span>(dy_1, dx_1) <span class="co"># Find bearing for segment 1</span></span>
-<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>    bearing_2 <span class="ot">&lt;-</span> <span class="fu">atan2</span>(dy_2, dx_2)  <span class="co"># Find bearing for segment 2</span></span>
-<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a>    db <span class="ot">&lt;-</span> bearing_2 <span class="sc">-</span> bearing_1 <span class="co"># Find difference in bearings (turning angle)</span></span>
-<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>    db <span class="ot">&lt;-</span> (db <span class="sc">+</span> pi) <span class="sc">%%</span> (<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">-</span> pi <span class="co"># Normalize to pi</span></span>
-<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>    db <span class="ot">&lt;-</span> db <span class="sc">*</span> <span class="dv">180</span> <span class="sc">/</span> pi <span class="co"># Convert to degrees</span></span>
-<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Generate n available steps for x_0 and y_0</span></span>
-<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>    available_steps <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
-<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>      <span class="at">i =</span> <span class="dv">1</span><span class="sc">:</span>n,</span>
-<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>      <span class="co"># Use gamma distribution to randomly sample</span></span>
-<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>      <span class="at">step_length =</span> <span class="fu">rgamma</span>(n, <span class="at">shape =</span> step_shape, <span class="at">rate =</span> step_rate),</span>
-<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>      <span class="co"># Use von Mises Distribution to randomly sample</span></span>
-<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a>      <span class="at">turning_angle =</span> CircStats<span class="sc">::</span><span class="fu">rvm</span>(n, <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">k =</span> db), </span>
-<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>      <span class="at">x =</span> x_0 <span class="sc">+</span> step_length <span class="sc">*</span> <span class="fu">cos</span>(turning_angle), </span>
-<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a>      <span class="at">y =</span> y_0 <span class="sc">+</span> step_length <span class="sc">*</span> <span class="fu">sin</span>(turning_angle)</span>
-<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>      )</span>
-<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>    available_steps_ls[[i]] <span class="ot">&lt;-</span> available_steps</span>
-<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>  }</span>
-<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(available_steps_ls)</span>
-<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>available_steps_ls <span class="ot">&lt;-</span> <span class="fu">generate_available_steps</span>(track, <span class="at">n =</span> <span class="dv">150</span>)</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(available_steps_ls[[<span class="dv">1</span>]])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 6 × 5
-      i step_length turning_angle     x      y
-  &lt;int&gt;       &lt;dbl&gt;         &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;
-1     1        3.94          2.83 -3.74  1.22 
-2     2        1.80          2.76 -1.67  0.673
-3     3        7.21          2.99 -7.13  1.09 
-4     4        3.32          3.50 -3.11 -1.16 
-5     5        6.82          3.11 -6.82  0.203
-6     6        3.13          2.98 -3.09  0.511</code></pre>
-</div>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    bearing_1 <span class="ot">&lt;-</span> <span class="fu">atan2</span>(dy_1, dx_1)  <span class="co"># Find bearing for segment 1</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    bearing_2 <span class="ot">&lt;-</span> <span class="fu">atan2</span>(dy_2, dx_2)    <span class="co"># Find bearing for segment 2</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    turn_angle <span class="ot">&lt;-</span> bearing_2 <span class="sc">-</span> bearing_1   <span class="co"># Find difference in bearings (turning angle)</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    turn_angle <span class="ot">&lt;-</span> (turn_angle <span class="sc">+</span> pi) <span class="sc">%%</span> (<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">-</span> pi  <span class="co"># Normalize to pi</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    turn_angle <span class="ot">&lt;-</span> turn_angle <span class="sc">*</span> <span class="dv">180</span> <span class="sc">/</span> pi   <span class="co"># Convert to degrees</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    used_locs_df<span class="sc">$</span>turn_angle[[i]] <span class="ot">&lt;-</span> turn_angle</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
-<section id="create-an-environmental-kernel" class="level2">
-<h2 class="anchored" data-anchor-id="create-an-environmental-kernel">Create an environmental kernel</h2>
-<p>Let’s define <code>create_env_kernel</code>. We use this function to create kernels for our environmental features.</p>
+<section id="create-movement-kernel" class="level2">
+<h2 class="anchored" data-anchor-id="create-movement-kernel">Create movement kernel</h2>
+<p>A movement kernel describes the probability of an animal moving from its current location to another in the absence of resource selection. We estimate this kernel from the used vs.&nbsp;available locations.</p>
+<p>Let’s create a set of available location for time <span class="math inline">\(t\)</span> using step length and turning angle at time <span class="math inline">\(t\)</span>.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>create_env_kernel <span class="ot">&lt;-</span> <span class="cf">function</span>(n, mean, sd, <span class="at">template =</span> rast){</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  env_rast <span class="ot">&lt;-</span> template</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Generate values and assign to raster cells</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  env_values <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="at">x =</span> <span class="fu">rnorm</span>(n, <span class="at">mean =</span> mean, sd), <span class="at">size =</span> <span class="fu">ncell</span>(env_rast), <span class="at">replace =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">values</span>(env_rast) <span class="ot">&lt;-</span> env_values</span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Add patchiness by averaging neighboring cells for each cell</span></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  env_rast <span class="ot">&lt;-</span> <span class="fu">focal</span>(env_rast, <span class="at">w =</span> <span class="dv">3</span>, <span class="at">fun =</span> <span class="st">"mean"</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>  env_kernel <span class="ot">&lt;-</span> <span class="fu">normalize_raster_discrete</span>(env_rast) <span class="co"># Normalize to kernel</span></span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(env_kernel)</span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>available_locs_ls <span class="ot">&lt;-</span> <span class="fu">list</span>()  <span class="co"># Initialize empty list</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>env1_kernel <span class="ot">&lt;-</span> <span class="fu">create_env_kernel</span>(<span class="at">n =</span> <span class="fl">1e5</span>, <span class="at">mean =</span> <span class="dv">500</span>, <span class="at">sd =</span> <span class="dv">200</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>generate_available_locs <span class="ot">&lt;-</span> <span class="cf">function</span>(df, n){</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>(<span class="fu">nrow</span>(df)<span class="sc">-</span><span class="dv">2</span>)){   <span class="co"># Skip last two rows</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    df_i <span class="ot">&lt;-</span> df[i, ]</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Generate n available steps for x_0 and y_0</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    available_locs <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>      <span class="at">id =</span> df_i<span class="sc">$</span>id,</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">used =</span> <span class="fu">as.numeric</span>(<span class="dv">0</span>),</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>      <span class="co"># Use gamma distribution to randomly sample</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>      <span class="at">step_length =</span> <span class="fu">rgamma</span>(n, <span class="at">shape =</span> df_i<span class="sc">$</span>step_shape, <span class="at">rate =</span> df_i<span class="sc">$</span>step_rate),</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>      <span class="co"># Use von Mises Distribution to randomly sample</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>      <span class="at">turn_angle =</span> CircStats<span class="sc">::</span><span class="fu">rvm</span>(n, <span class="at">mean =</span> <span class="dv">0</span>, <span class="at">k =</span> df_i<span class="sc">$</span>turn_angle), </span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">x =</span> df_i<span class="sc">$</span>x <span class="sc">+</span> step_length <span class="sc">*</span> <span class="fu">cos</span>(turn_angle), </span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">y =</span> df_i<span class="sc">$</span>y <span class="sc">+</span> step_length <span class="sc">*</span> <span class="fu">sin</span>(turn_angle),</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">t =</span> df_i<span class="sc">$</span>t,</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>    available_locs_ls[[i]] <span class="ot">&lt;-</span> available_locs</span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>  available_locs_df <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(available_locs_ls)  <span class="co"># Unlist into data frame</span></span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(available_locs_df)</span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>env2_kernel <span class="ot">&lt;-</span> <span class="fu">create_env_kernel</span>(<span class="at">n =</span> <span class="fl">1e5</span>, <span class="at">mean =</span> <span class="dv">900</span>, <span class="at">sd =</span> <span class="dv">300</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>available_locs_df <span class="ot">&lt;-</span> <span class="fu">generate_available_locs</span>(<span class="at">df =</span> used_locs_df, <span class="at">n =</span> <span class="dv">150</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>We set our selection coefficients, <span class="math inline">\(\omega\)</span>, for each kernel.</p>
+<p>And bind the data frames for the used (<code>used_locs_df</code>) and available (<code>available_locs_df</code>) locations. This data structure will make our regression analysis easier.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>omega_1 <span class="ot">&lt;-</span> <span class="fl">0.95</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>omega_2 <span class="ot">&lt;-</span> <span class="fl">0.65</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>all_locs_df <span class="ot">&lt;-</span> used_locs_df <span class="sc">|&gt;</span> </span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_rows</span>(available_locs_df) <span class="sc">|&gt;</span> </span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(t)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
-<section id="create-a-movement-kernel" class="level2">
-<h2 class="anchored" data-anchor-id="create-a-movement-kernel">Create a movement kernel</h2>
-<p>Next, let’s create a movement kernel to describe the probability density of occurrence in the absence of habitat selection.</p>
+<section id="create-resource-kernels" class="level2">
+<h2 class="anchored" data-anchor-id="create-resource-kernels">Create resource kernels</h2>
+<p>Resource selection refers to the “desirability” of an available spatial unit, given its resource value. This resource is typically described as an environmental feature, but it can be any type of feature of multidimensional space.</p>
+<p>We use the function <code>create_env_kernel</code> to represent our environmental features.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>create_env_kernel <span class="ot">&lt;-</span> <span class="cf">function</span>(n, mean, sd, <span class="at">template =</span> rast){</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  env_rast <span class="ot">&lt;-</span> template</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Generate values and assign to raster cells</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  env_values <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="at">x =</span> <span class="fu">rnorm</span>(n, <span class="at">mean =</span> mean, sd), <span class="at">size =</span> <span class="fu">ncell</span>(env_rast), <span class="at">replace =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">values</span>(env_rast) <span class="ot">&lt;-</span> env_values</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Add patchiness by averaging neighboring cells for each cell</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  env_rast <span class="ot">&lt;-</span> <span class="fu">focal</span>(env_rast, <span class="at">w =</span> <span class="dv">3</span>, <span class="at">fun =</span> <span class="st">"mean"</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>  env_kernel <span class="ot">&lt;-</span> <span class="fu">normalize_raster_discrete</span>(env_rast)   <span class="co"># Normalize to kernel</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(env_kernel)</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Let’s create two environmental kernels.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>env1_kernel <span class="ot">&lt;-</span> <span class="fu">create_env_kernel</span>(<span class="at">n =</span> <span class="fl">1e5</span>, <span class="at">mean =</span> <span class="dv">500</span>, <span class="at">sd =</span> <span class="dv">200</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>env2_kernel <span class="ot">&lt;-</span> <span class="fu">create_env_kernel</span>(<span class="at">n =</span> <span class="fl">1e5</span>, <span class="at">mean =</span> <span class="dv">900</span>, <span class="at">sd =</span> <span class="dv">250</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="simulation_files/figure-html/plot%20env%20kernels-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For each used and available location, we need to extract the value in each kernel.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>annotate_locations <span class="ot">&lt;-</span> <span class="cf">function</span>(locs_df, layer, col_name){</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  locs_vect <span class="ot">&lt;-</span> <span class="fu">vect</span>(locs_df, <span class="at">geom =</span> <span class="fu">c</span>(<span class="st">"x"</span>, <span class="st">"y"</span>), <span class="at">crs =</span> <span class="st">"EPSG:6339"</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">crs</span>(locs_vect) <span class="sc">!=</span> <span class="fu">crs</span>(layer)){</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    locs_vect <span class="ot">&lt;-</span> <span class="fu">project</span>(locs_vect, <span class="fu">crs</span>(layer))</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  layer_pts <span class="ot">&lt;-</span> <span class="fu">extract</span>(layer, locs_vect, <span class="at">ID =</span> <span class="cn">FALSE</span>) <span class="sc">|&gt;</span> </span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as_tibble</span>() <span class="sc">|&gt;</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rename</span>({{col_name}} <span class="sc">:</span><span class="er">=</span> focal_mean)</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>  locs_df <span class="ot">&lt;-</span> <span class="fu">bind_cols</span>(locs_df, layer_pts)</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(locs_df)</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>all_locs_df <span class="ot">&lt;-</span> <span class="fu">annotate_locations</span>(all_locs_df, env1_kernel, <span class="st">"env1"</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>all_locs_df <span class="ot">&lt;-</span> <span class="fu">annotate_locations</span>(all_locs_df, env2_kernel, <span class="st">"env2"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
 </section>
 <section id="fit-a-conditional-logistic-regression" class="level2">
 <h2 class="anchored" data-anchor-id="fit-a-conditional-logistic-regression">Fit a conditional logistic regression</h2>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>iSSA <span class="ot">&lt;-</span> <span class="fu">clogit</span>(used <span class="sc">~</span> step_length <span class="sc">+</span> turn_angle <span class="sc">+</span> env1 <span class="sc">+</span> env2 <span class="sc">+</span> <span class="fu">strata</span>(id), <span class="at">data =</span> all_locs_df)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(iSSA)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Call:
+coxph(formula = Surv(rep(1, 1361L), used) ~ step_length + turn_angle + 
+    env1 + env2 + strata(id), data = all_locs_df, method = "exact")
+
+  n= 1359, number of events= 9 
+   (2 observations deleted due to missingness)
+
+                  coef  exp(coef)   se(coef)      z Pr(&gt;|z|)   
+step_length -2.952e-02  9.709e-01  1.445e-01 -0.204  0.83816   
+turn_angle  -8.511e-02  9.184e-01  2.670e-02 -3.188  0.00143 **
+env1         2.327e+05        Inf  1.889e+05  1.232  0.21796   
+env2         1.597e+05        Inf  2.264e+05  0.705  0.48076   
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+            exp(coef) exp(-coef) lower .95 upper .95
+step_length    0.9709      1.030    0.7314    1.2888
+turn_angle     0.9184      1.089    0.8716    0.9677
+env1              Inf      0.000    0.0000       Inf
+env2              Inf      0.000    0.0000       Inf
+
+Concordance= 0.567  (se = 0.162 )
+Likelihood ratio test= 8.83  on 4 df,   p=0.07
+Wald test            = 1.82  on 4 df,   p=0.8
+Score (logrank) test = 31.14  on 4 df,   p=3e-06</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>iSSA_2 <span class="ot">&lt;-</span> <span class="fu">clogit</span>(used <span class="sc">~</span> step_length <span class="sc">+</span> step_length<span class="sc">*</span>env1 <span class="sc">+</span> turn_angle <span class="sc">+</span> env1 <span class="sc">+</span> env2 <span class="sc">+</span> <span class="fu">strata</span>(id), <span class="at">data =</span> all_locs_df)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(iSSA_2)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Call:
+coxph(formula = Surv(rep(1, 1361L), used) ~ step_length + step_length * 
+    env1 + turn_angle + env1 + env2 + strata(id), data = all_locs_df, 
+    method = "exact")
+
+  n= 1359, number of events= 9 
+   (2 observations deleted due to missingness)
+
+                       coef  exp(coef)   se(coef)      z Pr(&gt;|z|)   
+step_length      -3.574e-01  6.995e-01  1.028e+00 -0.348  0.72804   
+env1              9.628e+04        Inf  4.588e+05  0.210  0.83379   
+turn_angle       -8.471e-02  9.188e-01  2.655e-02 -3.190  0.00142 **
+env2              1.593e+05        Inf  2.256e+05  0.706  0.48020   
+step_length:env1  1.896e+04        Inf  5.848e+04  0.324  0.74581   
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+                 exp(coef) exp(-coef) lower .95 upper .95
+step_length         0.6995      1.430   0.09331    5.2438
+env1                   Inf      0.000   0.00000       Inf
+turn_angle          0.9188      1.088   0.87218    0.9679
+env2                   Inf      0.000   0.00000       Inf
+step_length:env1       Inf      0.000   0.00000       Inf
+
+Concordance= 0.564  (se = 0.163 )
+Likelihood ratio test= 8.94  on 5 df,   p=0.1
+Wald test            = 1.92  on 5 df,   p=0.9
+Score (logrank) test = 31.29  on 5 df,   p=8e-06</code></pre>
+</div>
+</div>
 </section>
 
 </main>
