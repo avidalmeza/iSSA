@@ -43,3 +43,6 @@ venv.bak/
 
 # Quarto files
 /.quarto/
+
+# Project files
+scratch/
